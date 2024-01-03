@@ -1,26 +1,35 @@
 import numpy as np
 from scipy.integrate import ode
+from constants.math_utils import coes2rv
 
 
 class OrbitPropagator:
     """
     Propagates an orbit using the given initial conditions and time span.
     """
-    __slots__ = ['r0', 'v0', 'tspan', 'dt', 'cb', 'history', 'name']
+    __slots__ = ['state', 'r0', 'v0', 'tspan', 'dt', 'cb', 'history', 'name', 'COES']
 
-    def __init__(self, r0: list, v0: list, tspan: float, dt: float, cb: dict, name="Object") -> None:
+    def __init__(self, state: list, tspan: float, dt: float, cb: dict, name="Object", COES=False) -> None:
         """
         OrbitPropagator constructor.
         
         Parameters:
-            r0 (np.array): The initial position.
-            v0 (no.array): The initial velocity.
+            state (list): The initial conditions of the orbit.
+                if COES is False: [r0, v0]
+                if COES is True: [a, e, i, RAAN, argp, nu]
             tspan (float): The time span to propagate the orbit for.
             dt (float): The time step to use.
             cb (dict): A dictionary containing the celestial body's properties.
+            name (str): The name of the object.
+            COES (bool): Whether the state is in COES or not. Defaults to False.
+                Semi-major axis (a), eccentricity (e), inclination (i), right ascension of the ascending node (raan), argument of perigee (argp), true anomaly (nu)
         """
-        self.r0 = np.array(r0)
-        self.v0 = np.array(v0)
+        if COES:
+            self.r0, self.v0 = coes2rv(state, cb['mu'])
+        else:
+            self.r0 = np.array(state[:3])
+            self.v0 = np.array(state[3:])
+
         self.tspan = tspan
         self.dt = dt
         self.cb = cb
