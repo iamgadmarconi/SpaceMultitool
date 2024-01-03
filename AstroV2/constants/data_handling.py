@@ -27,4 +27,3 @@ def get_tle(query: str, value: str, format='tle') -> list:
     
     except Exception as err:
         return f"Other error occurred: {err}"
-

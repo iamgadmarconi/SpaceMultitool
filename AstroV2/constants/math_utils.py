@@ -1,5 +1,6 @@
 import numpy as np
-from data_handling import get_tle
+from datetime import datetime, timedelta
+from constants.data_handling import get_tle
 
 
 def coes2rv(coes: list, mu: float, deg=False) -> tuple:
@@ -168,7 +169,7 @@ def tle2coes(tle: str, mu: float) -> tuple:
     mean_anomaly = float(line2[43:51])# Degrees
     mean_motion = float(line2[52:63]) # Revolutions per day
 
-    mean_motion_rad = mean_motion * 2 * np.pi / (24 * 60)
+    mean_motion_rad = mean_motion * 2 * np.pi / (24 * 60 * 60)
     mean_anomaly_rad = np.radians(mean_anomaly)
     raan_rad = np.radians(raan)
     arg_perigee_rad = np.radians(arg_perigee)
@@ -181,3 +182,42 @@ def tle2coes(tle: str, mu: float) -> tuple:
 
     # COEs: [semi-major axis, eccentricity, inclination, raan, argument of perigee, mean anomaly]
     return [a, eccentricity, inclination_rad, raan_rad, arg_perigee_rad, true_anomaly_rad]
+
+def epoch(tle):
+    """
+    Returns the epoch of the TLE.
+
+    Parameters:
+        tle (str): The TLE to convert.
+    """
+    line1, line2 = tle
+    epoch_str = line1[18:32]
+
+    # Parse the year and day of year
+    year = int("20" + epoch_str[:2])  # TLE uses two-digit year
+    day_of_year = float(epoch_str[2:])
+
+    # Convert to datetime
+    start_of_year = datetime(year, 1, 1)
+    epoch = start_of_year + timedelta(days=day_of_year - 1)
+
+    return epoch
+
+def get_coes_from_tle(query: str, value: str, mu: float, format='tle') -> tuple:
+    """
+    Fetch TLE data from Celestrak and convert to COES.
+
+    Parameters:
+        query (str): The type of query, e.g., 'CATNR', 'NAME', 'GROUP'.
+        value (str): The value for the query, e.g., satellite catalog number, satellite name, group name.
+        mu (float): The gravitational parameter of the body.
+        format (str): Format of the output, default is 'tle'.
+
+    Returns:
+        tuple: The COES, or an error message if unsuccessful.
+    """
+    tle = get_tle(query, value, format)
+    if len(tle) == 2:
+        return tle2coes(tle, mu)
+    else:
+        return tle
