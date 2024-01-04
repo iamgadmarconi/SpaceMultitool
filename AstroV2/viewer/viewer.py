@@ -1,9 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from multiprocessing import Pool, Manager
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import Slider
 from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
+import time
+from tqdm import tqdm
+
 
 class Viewer:
     """
@@ -15,7 +19,7 @@ class Viewer:
     """
     __slots__ = ['op', 'rs', 'mode']
 
-    def __init__(self, op: list, mode='static') -> None:
+    def __init__(self, op: list, mode='static', mp=False) -> None:
         """
         Viewer constructor.
         
@@ -23,12 +27,21 @@ class Viewer:
             op (OrbitPropagator): The orbit propagator to plot.
             rs (np.array): The positions of the body at each time step.
             mode (str): The mode to use for plotting. Can be 'static', 'interactive', or 'animated'.
+            mp (bool): Whether to use multiprocessing or not.
         """
         self.op = op
         if not isinstance(op, list):
             self.op = [op]
 
-        self.rs = [rs for rs in [op.ode_solver()[2] for op in self.op]]
+        if not mp:
+            self.rs = [rs for rs in [op.ode_solver()[2] for op in self.op]]
+        
+        elif mp:
+            with Pool() as pool, Manager() as manager:
+                indices = manager.list(range(len(self.op)))
+                results = pool.starmap(self.ode_solver_worker, [(op, idx, len(self.op)) for idx, op in enumerate(self.op)])
+
+            self.rs = list(results)
 
         if mode == 'static':
             self.plot()
@@ -38,6 +51,27 @@ class Viewer:
             self.plot_animated()
         else:
             raise ValueError(f'Invalid mode: {mode}')
+
+    @staticmethod
+    def ode_solver_worker(op, idx, total_ops) -> np.array:
+        """
+        Solves the ode for a single orbit propagator.
+
+        Parameters:
+            op (OrbitPropagator): The orbit propagator to solve.
+            idx (int): The index of the orbit propagator.
+            total_ops (int): The total number of orbit propagators.
+        Returns:
+            np.array: The positions of the body at each time step.
+        """
+        with tqdm(total=100, desc=f"Process {idx}", position=idx, leave=False) as pbar:
+            # Replace the following line with actual progress updates
+            for _ in range(100):
+                pbar.update(1)
+                # Simulate work being done
+                time.sleep(0.1)
+        # Return the result of ode_solver
+        return op.ode_solver()[2]
 
     def plot(self) -> None:
         """
@@ -141,7 +175,6 @@ class Viewer:
         update_plot(0)
 
         plt.show()
-
 
     def plot_animated(self, interval=10):
         """

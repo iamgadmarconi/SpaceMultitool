@@ -24,6 +24,7 @@ class Constants:
                             'mass': 5.972e24,
                             'radius': 6.371e6,
                             'mu': 3.986e14,
+                            'J2': 1.08262668e-3,
                             'position': [0, 0, 0]},
                         
                                 'Moon':{

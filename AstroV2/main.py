@@ -4,7 +4,15 @@ from viewer.viewer import Viewer
 from constants.constants import Constants as C
 from constants.math_utils import get_coes_from_tle
 
+
 if __name__ == "__main__":
+
+    perturbations = {'J2': True,
+                    'J2,2': False, 
+                    'drag': False, 
+                    'lunar': False,
+                    'srp': False,
+                    'relativity': False}
 
     r_mag0 = C.body_data['Earth']['radius'] + 1500000
     v_mag0 = np.sqrt(C.body_data['Earth']['mu'] / r_mag0)
@@ -26,7 +34,7 @@ if __name__ == "__main__":
 
     cb = C.body_data['Earth']
 
-    sat1 = OrbitPropagator(state0_coes, 100000, 10, cb, 'ISS', True)
-    sat2 = OrbitPropagator(state1_coes, 100000, 10, cb, 'EnviSat', True)
-    plot = Viewer([sat1, sat2], 'interactive')
+    sat1 = OrbitPropagator(state0_coes, 100000, 100, cb, 'ISS', True, perturbations)
+    sat2 = OrbitPropagator(state1_coes, 100000, 100, cb, 'EnviSat', True, perturbations)
+    plot = Viewer([sat1, sat2], 'animated')
 
