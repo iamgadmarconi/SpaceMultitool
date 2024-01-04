@@ -9,7 +9,7 @@ if __name__ == "__main__":
 
     perturbations = {'J2': True,
                     'J2,2': False, 
-                    'drag': False, 
+                    'drag': True, 
                     'lunar': False,
                     'srp': False,
                     'relativity': False}
@@ -34,7 +34,6 @@ if __name__ == "__main__":
 
     cb = C.body_data['Earth']
 
-    sat1 = OrbitPropagator(state0_coes, 100000, 100, cb, 'ISS', True, perturbations)
-    sat2 = OrbitPropagator(state1_coes, 100000, 100, cb, 'EnviSat', True, perturbations)
-    plot = Viewer([sat1, sat2], 'animated')
-
+    sat1 = OrbitPropagator(state0_coes, 10000, 100, cb, 'ISS', True, perturbations)
+    sat2 = OrbitPropagator(state1_coes, 10000, 100, cb, 'EnviSat', True, perturbations)
+    plot = Viewer([sat1, sat2], 'static')

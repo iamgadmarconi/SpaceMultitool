@@ -7,6 +7,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 import time
 from tqdm import tqdm
+from constants.math_utils import rv2coes
 
 
 class Viewer:
@@ -19,7 +20,7 @@ class Viewer:
     """
     __slots__ = ['op', 'rs', 'mode']
 
-    def __init__(self, op: list, mode='static', mp=False) -> None:
+    def __init__(self, op: list, mode=None, mp=False) -> None:
         """
         Viewer constructor.
         
@@ -43,8 +44,10 @@ class Viewer:
 
             self.rs = list(results)
 
-        if mode == 'static':
-            self.plot()
+        if mode is None:
+            pass
+        elif mode == 'static':
+            self.plot_static()
         elif mode == 'interactive':
             self.plot_interactive()
         elif mode == 'animated':
@@ -73,7 +76,7 @@ class Viewer:
         # Return the result of ode_solver
         return op.ode_solver()[2]
 
-    def plot(self) -> None:
+    def plot_static(self) -> None:
         """
         Plots the trajectory of the body.
         """
@@ -109,7 +112,7 @@ class Viewer:
         ax.quiver(x, y, z, u, v, w, color='k')
 
         # Setting plot limits and labels
-        all_positions = np.array([pos for op in self.op for pos in op.history.values()])
+        all_positions = np.array([pos['r'] for op in self.op for pos in op.history.values()])
         max_val = np.max(np.abs(all_positions))
         ax.set_xlim([-max_val, max_val])
         ax.set_ylim([-max_val, max_val])
@@ -144,15 +147,15 @@ class Viewer:
 
                 # Trace the object's path up to the current time
                 times = sorted(obj.history.keys())
-                past_positions = np.array([obj.history[time] for time in times if time <= t])
+                past_positions = np.array([obj.history[time]['r'] for time in times if time <= t])
                 line, = ax.plot(past_positions[:, 0], past_positions[:, 1], past_positions[:, 2], label=f'{obj.name} Path')
 
                 # Plot the object's position at the current time
-                pos = obj.history[t]
+                pos = obj.history[t]['r']
                 ax.scatter(pos[0], pos[1], pos[2])
 
             # Set plot limits and labels
-            all_positions = np.array([pos for op in self.op for pos in op.history.values()])
+            all_positions = np.array([pos['r'] for op in self.op for pos in op.history.values()])
             max_val = np.max(np.abs(all_positions))
             ax.set_xlim([-max_val, max_val])
             ax.set_ylim([-max_val, max_val])
@@ -237,20 +240,20 @@ class Viewer:
                 times = sorted(obj.history.keys())
                 if frame < len(times):
                     t = times[frame]
-                    pos = obj.history[t]
+                    pos = obj.history[t]['r']
                     # Update object position
                     obj_plot.set_data([pos[0]], [pos[1]])
                     obj_plot.set_3d_properties([pos[2]])
 
                     # Update object trail
-                    trail_xs, trail_ys, trail_zs = zip(*[obj.history[time] for time in times[:frame+1]])
+                    trail_xs, trail_ys, trail_zs = zip(*[obj.history[time]['r'] for time in times[:frame+1]])
                     trail_plot.set_data(trail_xs, trail_ys)
                     trail_plot.set_3d_properties(trail_zs)
 
             return [plot for subplots in plots for plot in subplots]
 
         # Setting plot limits and labels
-        all_positions = np.array([pos for op in self.op for pos in op.history.values()])
+        all_positions = np.array([pos['r'] for op in self.op for pos in op.history.values()])
         max_val = np.max(np.abs(all_positions))
         ax.set_xlim([-max_val, max_val])
         ax.set_ylim([-max_val, max_val])
@@ -260,5 +263,33 @@ class Viewer:
 
         # Creating the animation
         ani = FuncAnimation(fig, update, frames=np.max([op.tspan for op in self.op]), init_func=init, interval=interval, blit=False)
+
+        plt.show()
+
+    def plot_coes(self, op_index=0):
+        """
+        Plots the COEs of the body over time.
+
+        Parameters:
+            op_index (int): The index of the orbit propagator to plot.
+        """
+        times = np.arange(0, self.op[op_index].tspan, self.op[op_index].dt)
+        coes = []  # To store COEs at each time step
+
+        for time in times:
+            r = self.op[op_index].history[time]['r']
+            v = self.op[op_index].history[time]['v']
+            coes_at_t = rv2coes(r, v, self.op[op_index].cb['mu'])
+            coes.append(coes_at_t)
+
+        coes = np.array(coes)  # Convert to numpy array for easier manipulation
+        plt.figure(figsize=(10, 10))
+
+        coes_name = ['Semi-major Axis (m)', 'Eccentricity', 'Inclination (deg)', 'RAAN (deg)', 'Argument of Perigee (deg)', 'True Anomaly (deg)']
+        for i in range(coes.shape[1]):
+            plt.subplot(coes.shape[1], 1, i + 1)
+            plt.plot(times, coes[:, i])
+            plt.ylabel(coes_name[i])
+            plt.xlabel('Time (s)')
 
         plt.show()

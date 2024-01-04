@@ -27,3 +27,44 @@ def get_tle(query: str, value: str, format='tle') -> list:
     
     except Exception as err:
         return f"Other error occurred: {err}"
+
+def perturbations():
+    """
+    Perturbations to use in the orbit propagator.
+
+    Returns:
+        dict: A dictionary containing the perturbations to use.
+            J2 (bool): Perturbations due to the J2 term.
+            J2,2 (bool): Perturbations due to the J2,2 term.
+            drag (bool): Perturbations due to atmospheric drag.
+            lunar (bool): Perturbations due to the moon.
+            srp (bool): Perturbations due to solar radiation pressure.
+            relativity (bool): Perturbations due to relativity.
+    """
+    return {'J2': False,
+            'J2,2': False, 
+            'drag': False, 
+            'lunar': False,
+            'srp': False,
+            'relativity': False}
+
+def stop_conditions(max_alt, min_alt, dt):
+    """
+    Stop conditions for the orbit propagator.
+
+    Returns:
+        bool: Whether to stop the orbit propagator or not.
+    """
+    if check_deorbit() or check_max_alt(max_alt, dt) or check_min_alt(min_alt, dt):
+        return True
+    return False
+
+def check_deorbit(alt):
+    pass
+
+def check_max_alt(alt, dt):
+    pass
+
+def check_min_alt(alt):
+    pass
+
