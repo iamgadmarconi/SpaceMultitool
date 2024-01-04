@@ -13,6 +13,10 @@ if __name__ == "__main__":
                     'lunar': False,
                     'srp': False,
                     'relativity': False}
+    
+    stop_conditions = {'max_alt': 7000e3,
+                        'min_alt': 600e3,
+                        'deorbit': False}
 
     r_mag0 = C.body_data['Earth']['radius'] + 1500000
     v_mag0 = np.sqrt(C.body_data['Earth']['mu'] / r_mag0)
@@ -34,6 +38,8 @@ if __name__ == "__main__":
 
     cb = C.body_data['Earth']
 
-    sat1 = OrbitPropagator(state0_coes, 10000, 100, cb, 'ISS', True, perturbations)
-    sat2 = OrbitPropagator(state1_coes, 10000, 100, cb, 'EnviSat', True, perturbations)
-    plot = Viewer([sat1, sat2], 'static')
+    tspan = 100000
+
+    sat1 = OrbitPropagator(state0_coes, tspan, 100, cb, 'ISS', True, perturbations)
+    sat2 = OrbitPropagator(state1_coes, tspan, 100, cb, 'EnviSat', True)
+    plot = Viewer([sat1], 'static')

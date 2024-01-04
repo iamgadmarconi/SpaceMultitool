@@ -48,23 +48,19 @@ def perturbations():
             'srp': False,
             'relativity': False}
 
-def stop_conditions(max_alt, min_alt, dt):
+def stop_conditions():
     """
-    Stop conditions for the orbit propagator.
+    Stop conditions to use in the orbit propagator.
 
     Returns:
-        bool: Whether to stop the orbit propagator or not.
+        dict: A dictionary containing the stop conditions to use.
+            max_alt (float): The maximum altitude.
+            min_alt (float): The minimum altitude.
+            deorbit (bool): Whether to stop when the satellite deorbits.
     """
-    if check_deorbit() or check_max_alt(max_alt, dt) or check_min_alt(min_alt, dt):
-        return True
-    return False
+    return {'max_alt': None,
+            'min_alt': None,
+            'deorbit': False}
+    
 
-def check_deorbit(alt):
-    pass
-
-def check_max_alt(alt, dt):
-    pass
-
-def check_min_alt(alt):
-    pass
 
