@@ -1,6 +1,57 @@
 import ephem
 import numpy as np
+import spiceypy as spice
 
+
+def get_obj(filename=r'C:\Users\gadma\Documents\Coding\SpaceMultitool\AstroV2\constants\data\spice_data.mk', display=False):
+    """
+    Gets the objects in a SPICE kernel file.
+
+    Parameters:
+        filename (str): The name of the SPICE kernel file.
+    Returns:
+        tuple: The object IDs, names, start/end times in seconds, and start/end times in calendar format.
+    """
+    objects = spice.spkobj(filename)
+    ids, names, tcs_sec, tcs_cal = [], [], [], []
+
+    n = 0
+    if display:
+        print('\n Obejcts in %s:' % filename)
+
+    for obj in objects:
+        ids.append(obj)
+
+        tc_sec = spice.wnfetd(spice.spkcov(filename, ids[n], n))
+        tc_cal = [spice.timeout(f, 'YYYY MON DD HR:MN:SC.### (TBD) ::TDB') for f in tc_sec]
+
+        tcs_sec.append(tc_sec)
+        tcs_cal.append(tc_cal)
+
+        try:
+            names.append(spice.id2body(obj))
+
+        except:
+            names.append('Unknown')
+
+        if display:
+            print('ID: %i\t\tName: %s\t\ttc: %s --> %s' % (ids[-1], names[-1], tc_cal[0], tc_cal[1]))
+
+        n += 1
+
+    return ids, names, tcs_sec, tcs_cal
+    
+def load_mk(filename=r'C:\Users\gadma\Documents\Coding\SpaceMultitool\AstroV2\constants\data\spice_data.mk'):
+    """
+    Loads a SPICE kernel file.
+
+    Parameters:
+        filename (str): The name of the SPICE kernel file.
+    Returns:
+        None
+    """
+    # spice.furnsh(r'C:\Users\gadma\Documents\Coding\SpaceMultitool\AstroV2\constants\data\path_definitions.tm')
+    spice.furnsh(filename)
 
 def get_heliocentric_coordinates(hlon_rad: float, hlat_rad: float, sun_distance: float) -> tuple:
     """
