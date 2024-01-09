@@ -8,6 +8,8 @@ from matplotlib.lines import Line2D
 import time
 from tqdm import tqdm
 from constants.math_utils import rv2coes
+from physics.engine import OrbitPropagator
+from models.celestial_body import CelestialBody
 
 
 class Viewer:
@@ -20,7 +22,7 @@ class Viewer:
     """
     __slots__ = ['op', 'rs', 'mode']
 
-    def __init__(self, op: list, mode=None, mp=False) -> None:
+    def __init__(self, op: list=[], mode=None, mp=False) -> None:
         """
         Viewer constructor.
         
@@ -75,6 +77,45 @@ class Viewer:
                 time.sleep(0.1)
         # Return the result of ode_solver
         return op.ode_solver()[2]
+    
+    def plot_n_orbits(self, rs, radius=6378000) -> None:
+        fig = plt.figure(figsize=(16, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        n = 0
+
+        for n, r in enumerate(rs):
+            # Flatten the first dimension of r
+            r = np.squeeze(r)
+
+            # Now you can plot r
+            ax.plot(r[:, 0], r[:, 1], r[:, 2], '-', label=f'Orbit {n}')
+            ax.plot(r[0, 0], r[0, 1], r[0, 2], 'o', label=f'Orbit {n} Start')
+            n += 1
+
+        r_plot = radius
+        _u, _v = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
+        _x = r_plot * np.cos(_u) * np.sin(_v)
+        _y = r_plot * np.sin(_u) * np.sin(_v)
+        _z = r_plot * np.cos(_v)
+        ax.plot_surface(_x, _y, _z, cmap='Blues', alpha=0.3)
+
+        l = r_plot * 2.0
+        x, y, z = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        u, v, w = [[l, 0, 0], [0, l, 0], [0, 0, l]]
+        ax.quiver(x, y, z, u, v, w, color='k')
+
+        max_val = np.max(np.abs(rs))
+
+        ax.set_xlim([-max_val, max_val])
+        ax.set_ylim([-max_val, max_val])
+        ax.set_zlim([-max_val, max_val])
+
+        ax.set_xlabel('X (m)'); ax.set_ylabel('Y (m)'); ax.set_zlabel('Z (m)')
+
+        ax.set_title(f'Trajectory')
+
+        plt.show()
 
     def plot_static(self) -> None:
         """
@@ -87,6 +128,7 @@ class Viewer:
         for i in range(len(self.op)):
             r = self.rs[i]
             obj = self.op[i]
+            print(r, obj)
             # Plot each trajectory
             line, = ax.plot(r[:, 0], r[:, 1], r[:, 2], '-', label=f'{obj.name} Trajectory')
             ax.plot(r[0, 0], r[0, 1], r[0, 2], 'o', label=f'{obj.name} Start')
@@ -103,7 +145,8 @@ class Viewer:
             _z = r_plot * np.cos(_v)
 
             # Central body surface
-            ax.plot_surface(_x + obj.cb['position'][0], _y + obj.cb['position'][1], _z + obj.cb['position'][2], cmap='Blues', alpha=0.3, label=f'{self.op[i].cb["name"]}')
+            if isinstance(obj, OrbitPropagator):
+                ax.plot_surface(_x + obj.cb['position'][0], _y + obj.cb['position'][1], _z + obj.cb['position'][2], cmap='Blues', alpha=0.3, label=f'{self.op[i].cb["name"]}')
 
         # Reference lines
         l = r_plot * 2.0
@@ -112,7 +155,11 @@ class Viewer:
         ax.quiver(x, y, z, u, v, w, color='k')
 
         # Setting plot limits and labels
-        all_positions = np.array([pos['r'] for op in self.op for pos in op.history.values()])
+        if isinstance(obj, OrbitPropagator):
+            all_positions = np.array([pos['r'] for op in self.op for pos in op.history.values()])
+        elif isinstance(obj, CelestialBody):
+            all_positions = np.array([r for op in self.op for r in op.rs_list])
+
         max_val = np.max(np.abs(all_positions))
         ax.set_xlim([-max_val, max_val])
         ax.set_ylim([-max_val, max_val])

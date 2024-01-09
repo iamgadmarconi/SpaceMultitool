@@ -1,8 +1,8 @@
 \begindata
 
 KERNELS_TO_LOAD = (
-    'C:\SMT\latest_leapseconds.tls',
-    'C:\SMT\de432s.bsp'
+    'D:\Documents\Python\SpaceMultitool\AstroV2\constants\data\latest_leapseconds.tls',
+    'D:\Documents\Python\SpaceMultitool\AstroV2\constants\data\de432s.bsp'
 )
 
 \begintext

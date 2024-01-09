@@ -39,7 +39,8 @@ class OrbitPropagator:
         self.dt = dt
         self.cb = cb
         self.history = {0: {'r': self.r0.copy(),
-                            'v': self.v0.copy()}}
+                            'v': self.v0.copy(),
+                            'm': m}}
         self.name = name
         self.flags = perts
         self.sc = sc
