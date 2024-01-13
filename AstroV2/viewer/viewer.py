@@ -22,7 +22,7 @@ class Viewer:
     """
     __slots__ = ['op', 'rs', 'mode']
 
-    def __init__(self, op: list=[], mode=None, mp=False) -> None:
+    def __init__(self, op: list=[], mode: str=None, mp: bool=False) -> None:
         """
         Viewer constructor.
         
@@ -58,7 +58,7 @@ class Viewer:
             raise ValueError(f'Invalid mode: {mode}')
 
     @staticmethod
-    def ode_solver_worker(op, idx, total_ops) -> np.array:
+    def ode_solver_worker(op: OrbitPropagator, idx: int, total_ops: int) -> np.array:
         """
         Solves the ode for a single orbit propagator.
 

@@ -4,31 +4,15 @@ A module for the thermal model.
 
 from multiprocessing import Pool
 import numpy as np
+from tqdm import tqdm
 from scipy.integrate import solve_ivp, dblquad
 from constants import Constants as C
-from materials import Component
-from tqdm import tqdm
+from materials import Component, Material
 
 
 class Node:
     """
     Represents a node in the thermal model.
-
-    Attributes:
-        key (int): Unique identifier for the node.
-        area: Incident area.
-        conductivity: Thermal conductivity.
-        mass: Mass of the node.
-        cp: Specific heat capacity.
-        emissivity: Emissivity.
-        absorptivity: Absorptivity.
-        temperature: Temperature.
-        gamma: Angle between the node and the sun/earth.
-        rb (str): Radiating body (earth or sun).
-        position (list): Position of the center of the node from the geometric center of the S/C in meters 
-                         and angle between the normal vector of the node face and the origin in degrees 
-                         ([x, y, z], [theta_xy, theta_yz, theta_xz]).
-        heat_flux (float): Heat flux in watts (default: 0).
 
     Methods:
         name(name): Returns the name of the node.
@@ -36,16 +20,20 @@ class Node:
         remove_neighbor(key): Removes a neighbor from the node.
         get_neighbors(): Returns a list of neighbors.
         update_temperature(temperature): Updates the temperature of the node.
+        get_effective_emissivity(param): Calculate the effective emissivity of the node with MLI.
+        calculate_flux(index): Calculate the radiation flux terms F1 and F2 for a given layer in the MLI.
     """
 
-    __slots__ = ['key', 'neighbors', 'area', 'conductivity', '_mass', '_cp', 'emissivity', 'absorptivity', 'temperature', 'gamma', 'radiating_body', 'position', 'heat_flux_int', 'name', '_thermal_mass']
+    __slots__ = ['key', 'neighbors', 'area', 'conductivity', '_mass', '_cp', 'emissivity', 'absorptivity', 'temperature', 'gamma',
+                 'radiating_body', 'position', 'mli', 'heat_flux_int', 'name', '_thermal_mass']
 
-    def __init__(self, key: int, name, area, mass, material, temperature, gamma, rb: str, position: list) -> None:
+    def __init__(self, key: int, name: str, area: float, mass: float, material: Material, temperature: float, gamma: float, rb: str, position: list, mli: list=None) -> None:
         """ 
         Initializes a new instance of the Node class.
 
         Parameters:
             key (int): Unique identifier for the node.
+            name (str): Name of the node.
             area (float): Incident area. m^2
             conductivity (float): Thermal conductivity. W/mK
             mass (float): Mass of the node. kg
@@ -58,9 +46,14 @@ class Node:
             position (list): Position of the center of the node from the geometric center of the S/C in meters 
                              and angle between the normal vector of the node face and the origin in degrees 
                              ([x, y, z], [theta_xy, theta_yz, theta_xz]).
+            mli (bool): True if the node has MLI, False otherwise.
             heat_flux (float): Heat flux in watts (default: 0).
+            mli (dict): Additional arguments for the MLI model.
+                [{temperature: float, emissivity: float, absorptivity: float, cp: float, area: float, mass: float, xi: float]}]
+
         """
         self.key = key
+        self.name = name
         self.neighbors = {}
         self.area = area
         self.conductivity = material.conductivity
@@ -73,7 +66,9 @@ class Node:
         self.radiating_body = rb
         self.position = np.array(position)
         self.heat_flux_int = 0
-        self.name = name
+        self.mli = mli
+        if self.mli is not None:
+            self.emissivity = self.get_emissivity() # Calculate the effective emissivity of the node with MLI
         if isinstance(material, Component):
             self.heat_flux_int = material.power * material.efficiency # if node is electronic component, heat flux in W
         self._thermal_mass = self._mass * self._cp
@@ -164,6 +159,59 @@ class Node:
         """
         if self.heat_flux_int == 0:  # Update temperature only if it's not an electronic component
             self.temperature = temperature
+        
+    def get_emissivity(self):
+        """
+        Calculate the effective emissivity of the node with MLI, using the provided physical model.
+
+        Returns:
+            float: Effective emissivity of the node.
+        """
+        total_radiative_power = 0
+
+        # Iterate through each layer to calculate the radiative power
+        for i, layer in enumerate(self.mli):
+            F1, F2 = self.calculate_flux(i)
+            # Total power radiated by this layer
+            total_radiative_power += layer['xi'] * layer['emissivity'] * (F1 + F2 - 2 * C.sigma * self.temperature**4)
+
+        # The effective emissivity is the total radiative power divided by the Stefan-Boltzmann law for the entire node
+        effective_emissivity = total_radiative_power / (C.sigma * self.area * self.temperature**4)
+
+        # Ensure emissivity is within physical bounds [0, 1]
+        effective_emissivity = max(0, min(effective_emissivity, 1))
+
+        return effective_emissivity
+
+    def calculate_flux(self, index):
+        """
+        Calculate the radiation flux terms F1 and F2 for a given layer in the MLI.
+
+        Parameters:
+            index (int): The index of the layer within the MLI stack.
+
+        Returns:
+            tuple: A tuple containing the F1 and F2 flux terms for the given layer.
+        """
+        # Retrieve the properties of the current layer and adjacent layers
+        current_layer = self.mli[index]
+        epsilon_i = current_layer['emissivity']
+        alpha_i = current_layer['absorptivity']
+        T_i = current_layer['temperature']  # Temperature of the current layer
+
+        # Calculate the radiative conductance for the current layer
+        k_rad_i = C.sigma * (epsilon_i + alpha_i) / (1 - epsilon_i)
+        
+        # Determine the temperature of the adjacent layers
+        # For the outermost layers, if there's no adjacent MLI, use the node's temperature
+        T_above = self.mli[index - 1]['temperature'] if index > 0 else self.temperature
+        T_below = self.mli[index + 1]['temperature'] if index < len(self.mli) - 1 else self.temperature
+
+        # Calculate the radiation flux terms F1 and F2
+        F1 = k_rad_i * (T_above**4 - T_i**4)  # Flux from the layer above to the current layer
+        F2 = k_rad_i * (T_i**4 - T_below**4)  # Flux from the current layer to the layer below
+
+        return F1, F2
 
 
 class OrbitProperties():
@@ -521,7 +569,7 @@ class ThermalModel:
         integrate_heat_balance(self, beta_range, h_range, time_range): Integrates the heat balance equation over a range of parameters.
     """
 
-    __slots__ = ['nodes', 'vf_matrix', 'k_matrix']
+    __slots__ = ['nodes', 'vf_matrix', 'k_matrix', 'a_matrix']
 
     def __init__(self, nodes: list) -> None:
         """
@@ -529,12 +577,16 @@ class ThermalModel:
 
         Parameters:
             nodes (list): List of nodes in the thermal model.
+            vf_matrix (numpy.ndarray): View factor matrix.
+            k_matrix (numpy.ndarray): Conductivity matrix.
+            a_matrix (numpy.ndarray): Area matrix.
         """
         self.nodes = {node.key: node for node in nodes}
         self.vf_matrix = self.internal_vf()
         self.k_matrix = self.compute_conductivity_matrix()
+        self.a_matrix = self.compute_area_matrix()
 
-    def add_node(self, node: Node):
+    def add_node(self, node: Node) -> None:
         """
         Adds a node to the list of nodes in the thermal model.
 
@@ -545,7 +597,7 @@ class ThermalModel:
         self.vf_matrix = self.internal_vf()
         self.k_matrix = self.compute_conductivity_matrix()
 
-    def remove_node(self, key):
+    def remove_node(self, key: str) -> None:
         """
         Removes a node from the list of nodes based on the given key.
 
@@ -557,7 +609,7 @@ class ThermalModel:
             self.vf_matrix = self.internal_vf()
             self.k_matrix = self.compute_conductivity_matrix()
 
-    def get_node(self, key):
+    def get_node(self, key: str) -> Node:
         """
         Get a node from the thermal model by its key.
 
@@ -570,7 +622,7 @@ class ThermalModel:
         return self.nodes.get(key, None)
     
     @staticmethod
-    def normal_vector_from_angles(theta_xy, theta_yz, theta_xz):
+    def normal_vector_from_angles(theta_xy: float, theta_yz: float, theta_xz: float) -> np.ndarray:
         """
         Calculate the normal vector from given angles.
 
@@ -592,7 +644,7 @@ class ThermalModel:
         return normal_vector
 
     @staticmethod
-    def calculate_angles(node_i, node_j, normal1, normal2):
+    def calculate_angles(node_i: Node, node_j: Node, normal1: np.ndarray, normal2: np.ndarray) -> tuple:
         """
         Calculate the angles between the normal vectors of two faces.
 
@@ -625,7 +677,7 @@ class ThermalModel:
         return theta_i, theta_j, R_ij
 
     @staticmethod
-    def compute_view_factor(args):
+    def compute_view_factor(args) -> float:
         """
         Compute the view factor between two nodes.
 
@@ -659,7 +711,7 @@ class ThermalModel:
 
         return result / A_i
 
-    def is_occluded(self, index_i, index_j, positions):
+    def is_occluded(self, index_i: int, index_j: int, positions: np.ndarray) -> bool:
         """
         Check if any node occludes the view between two nodes.
 
@@ -682,7 +734,7 @@ class ThermalModel:
 
         return False
 
-    def internal_vf(self):
+    def internal_vf(self) -> np.ndarray:
         """
         Calculate the view factor matrix between different nodes.
 
@@ -744,7 +796,7 @@ class ThermalModel:
 
         return vf_matrix
     
-    def compute_conductivity_matrix(self):
+    def compute_conductivity_matrix(self) -> np.ndarray:
         """
         Calculate the conductivity matrix.
 
@@ -761,10 +813,29 @@ class ThermalModel:
                 j = node_indices[neighbor_node.key]
                 k_matrix[i, j] = neighbor_node.conductivity
                 k_matrix[i, i] -= neighbor_node.conductivity
-        
-        return k_matrix
 
-    def heat_balance(self, h, beta, t):
+        return k_matrix
+    
+    def compute_area_matrix(self) -> np.ndarray:
+        """
+        Calculate the area matrix.
+
+        Returns:
+            numpy.ndarray: Area matrix.
+        """
+        node_count = len(self.nodes)
+
+        node_indices = {node_key: idx for idx, node_key in enumerate(self.nodes.keys())}
+
+        area_matrix = np.zeros((node_count, node_count))
+        for i, (key_i, node_i) in enumerate(self.nodes.items()):
+            for neighbor_node, contact_area in node_i.get_neighbors():
+                j = node_indices[neighbor_node.key]
+                area_matrix[i, j] = contact_area
+        
+        return area_matrix
+
+    def heat_balance(self, h: float, beta: float, t: float) -> np.ndarray:
         """
         Calculate the rate of change of temperature for each node in the thermal model.
 
@@ -778,54 +849,49 @@ class ThermalModel:
         """
         thermal_control = True
 
-        node_count = len(self.nodes)
-
         node_indices = {node_key: idx for idx, node_key in enumerate(self.nodes.keys())}
 
-        q_internal = np.zeros(node_count)
-        for i, node_i in enumerate(self.nodes.values()):
-            for neighbor_key, neighbor_data in node_i.neighbors.items():
-                j = node_indices[neighbor_key]
-                if i != j:
-                    neighbor_node, contact_area = neighbor_data
-                    temperature_difference = self.nodes[neighbor_key].temperature - node_i.temperature
-                    q_internal[i] += self.k_matrix[i, j] * temperature_difference * contact_area
-
-        # Unpack node properties into arrays
         temperatures = np.array([node.temperature for node in self.nodes.values()])
-        emissivities = np.array([node.emissivity for node in self.nodes.values()])
+        # Call each node's get_emissivity method to account for MLI
+        emissivities = np.array([node.get_emissivity() if hasattr(node, 'mli') and node.mli else node.emissivity for node in self.nodes.values()])
         areas = np.array([node.area for node in self.nodes.values()])
         thermal_masses = np.array([node.thermal_mass for node in self.nodes.values()])
         heat_flux_ints = np.array([node.heat_flux_int for node in self.nodes.values()])
 
-        # Calculate the internal radiated heat flux
+        temperature_differences = np.zeros_like(self.a_matrix)
+        for i, node_i in enumerate(self.nodes.values()):
+            for neighbor_key in node_i.neighbors:
+                j = node_indices[neighbor_key]
+                if i != j:
+                    temperature_differences[i, j] = temperatures[j] - temperatures[i]
+
+        heat_transfer_matrix = self.k_matrix * temperature_differences * self.a_matrix
+        q_internal = np.sum(heat_transfer_matrix, axis=1)
+
         temp_diff = temperatures[:, np.newaxis] ** 4 - temperatures[np.newaxis, :] ** 4
+        # Update q_internal_radiated to use the new emissivities from MLI where applicable
         q_internal_radiated = np.sum(emissivities[:, np.newaxis] * C.sigma * temp_diff * areas[:, np.newaxis] * self.vf_matrix, axis=1)
 
-        # Calculate the externally radiated heat flux
         radiating_bodies = np.array([node.radiating_body for node in self.nodes.values()])
         is_radiating = np.isin(radiating_bodies, ['earth', 'sun'])
+        # Update q_radiated to use the new emissivities from MLI where applicable
         q_radiated = np.where(is_radiating, emissivities * C.sigma * areas * (temperatures ** 4 - C.T_space ** 4), 0)
 
-        # Calculate the heat flux generated by electronic components
         q_generated = np.array([node.heat_flux_int for node in self.nodes.values()])
-
+        
         external_heat_flux = ExternalHeatFlux(self.nodes, h, beta, t).total_flux()
 
         q_total = q_internal + q_generated + q_internal_radiated - q_radiated + external_heat_flux
 
-        # Calculate the rate of change of temperature for each node with thermal control for electronic components
         if thermal_control:
-            # Set rate of change to zero for electronic components (where heat_flux_int is not zero)
             dT_dt = np.where(heat_flux_ints == 0, q_total / thermal_masses, 0)
         else:
-            # Compute rate of change for all nodes without considering electronic component status
             dT_dt = q_total / thermal_masses
 
         return dT_dt
 
     @staticmethod
-    def integrate_one_scenario(args):
+    def integrate_one_scenario(args) -> np.ndarray:
         """
         Integrate the heat balance equation for a single scenario.
 
@@ -845,7 +911,7 @@ class ThermalModel:
         sol = solve_ivp(ode_system, [0, time], initial_T, method='RK45')
         return sol.y[:, -1]
 
-    def ode_system_wrapper(self, h, beta):
+    def ode_system_wrapper(self, h: float, beta: float):
         """
         Returns a function that calculates the rate of change of temperature for each node in the thermal model.
 
@@ -856,7 +922,7 @@ class ThermalModel:
         Returns:
             function: Function that calculates the rate of change of temperature for each node in the thermal model.
         """
-        def ode_system(t, y):
+        def ode_system(t: float, y: np.ndarray) -> np.ndarray:
             """
             ode_system calculates the rate of change of temperature for each node in the thermal model.
 
@@ -873,7 +939,7 @@ class ThermalModel:
 
         return ode_system
 
-    def integrate_heat_balance(self, beta_range, h_range, time_range):
+    def integrate_heat_balance(self, beta_range: np.ndarray, h_range: np.ndarray, time_range: np.ndarray) -> np.ndarray:
         """
         integrate the heat balance equation over a range of parameters.
 
