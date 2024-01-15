@@ -10,7 +10,7 @@ from thermalmodel_v4 import Node
 Aluminium = Mat("Aluminium", 237, 897, 0.9, 0.3)
 Steel = Mat("Steel", 50, 500, 0.9, 0.3)
 GalliumArsenide = Mat("Gallium Arsenide", 40, 340, 0.8, 0.8)
-Electronics = Comp("Electronics", 3000, Aluminium, 0.2)
+Electronics = Comp("Electronics", 600, Aluminium, 0.2)
 
 node_data = [
             {
@@ -146,6 +146,7 @@ neighbor_mapping = {
     4: [(5, C.A_contact_side), (6, C.A_contact_top), (7, C.A_contact_top), (8, C.A_contact_support)],
     5: [(6, C.A_contact_top), (7, C.A_contact_top), (9, C.A_contact_boom), (8, C.A_contact_support)],
     6: [(7, C.A_contact_top), (6, C.A_contact_top)],
+    8: [(0, C.A_contact_side), (1, C.A_contact_side), (2, C.A_contact_side), (3, C.A_contact_side), (4, C.A_contact_side), (5, C.A_contact_side), (6, C.A_contact_top)],
     # Continue for other nodes if needed
 }
 

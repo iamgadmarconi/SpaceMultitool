@@ -16,10 +16,11 @@ def main():
     tm = TM4(nodes)
     beta_range = np.linspace(0, 90, 2)
     h_range = np.linspace(200, 2000, 2)
-    time_range = np.linspace(0, 31000, 1000)
+    time_range = np.linspace(0, 31000, 300)
 
     plot_3d(tm, beta_range, h_range, time_range)
 
 
 if __name__ == "__main__":
     main()
+

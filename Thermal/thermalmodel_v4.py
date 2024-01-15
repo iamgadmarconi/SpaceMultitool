@@ -157,8 +157,8 @@ class Node:
         Parameters:
             temperature (float): The new temperature value.
         """
-        if self.heat_flux_int == 0:  # Update temperature only if it's not an electronic component
-            self.temperature = temperature
+        # if self.heat_flux_int == 0:  # Update temperature only if it's not an electronic component
+        self.temperature = temperature
         
     def get_emissivity(self):
         """
@@ -565,11 +565,14 @@ class ThermalModel:
         compute_view_factor(args): Computes the view factor between two nodes.
         is_occluded(self, index_i, index_j, positions): Checks if any node occludes the view between two nodes.
         internal_vf(self): Calculates the view factor between different nodes.
+        compute_conductivity_matrix(self): Calculates the conductivity matrix.
+        compute_area_matrix(self): Calculates the area matrix.
+        compute_distance_matrix(self): Calculates the distance matrix.
         heat_balance(self, h, beta, t): Calculates the heat balance equation.
         integrate_heat_balance(self, beta_range, h_range, time_range): Integrates the heat balance equation over a range of parameters.
     """
 
-    __slots__ = ['nodes', 'vf_matrix', 'k_matrix', 'a_matrix']
+    __slots__ = ['nodes', 'vf_matrix', 'k_matrix', 'a_matrix', 'l_matrix']
 
     def __init__(self, nodes: list) -> None:
         """
@@ -580,11 +583,13 @@ class ThermalModel:
             vf_matrix (numpy.ndarray): View factor matrix.
             k_matrix (numpy.ndarray): Conductivity matrix.
             a_matrix (numpy.ndarray): Area matrix.
+            l_matrix (numpy.ndarray): Distance matrix.
         """
         self.nodes = {node.key: node for node in nodes}
         self.vf_matrix = self.internal_vf()
         self.k_matrix = self.compute_conductivity_matrix()
         self.a_matrix = self.compute_area_matrix()
+        self.l_matrix = self.compute_distance_matrix()
 
     def add_node(self, node: Node) -> None:
         """
@@ -596,6 +601,8 @@ class ThermalModel:
         self.nodes[node.key] = node
         self.vf_matrix = self.internal_vf()
         self.k_matrix = self.compute_conductivity_matrix()
+        self.a_matrix = self.compute_area_matrix()
+        self.l_matrix = self.compute_distance_matrix()
 
     def remove_node(self, key: str) -> None:
         """
@@ -608,6 +615,8 @@ class ThermalModel:
             del self.nodes[key]
             self.vf_matrix = self.internal_vf()
             self.k_matrix = self.compute_conductivity_matrix()
+            self.a_matrix = self.compute_area_matrix()
+            self.l_matrix = self.compute_distance_matrix()
 
     def get_node(self, key: str) -> Node:
         """
@@ -834,6 +843,25 @@ class ThermalModel:
                 area_matrix[i, j] = contact_area
         
         return area_matrix
+    
+    def compute_distance_matrix(self) -> np.ndarray:
+        """
+        Calculate the distance matrix.
+
+        Returns:
+            numpy.ndarray: Distance matrix.
+        """
+        node_count = len(self.nodes)
+
+        node_indices = {node_key: idx for idx, node_key in enumerate(self.nodes.keys())}
+
+        distance_matrix = np.zeros((node_count, node_count))
+        for i, (key_i, node_i) in enumerate(self.nodes.items()):
+            for neighbor_node, _ in node_i.get_neighbors():
+                j = node_indices[neighbor_node.key]
+                distance_matrix[i, j] = np.linalg.norm(node_i.position[0] - neighbor_node.position[0])
+        
+        return distance_matrix
 
     def heat_balance(self, h: float, beta: float, t: float) -> np.ndarray:
         """
@@ -847,7 +875,7 @@ class ThermalModel:
         Returns:
             dT_dt (numpy.ndarray): Array of the rate of change of temperature for each node.
         """
-        thermal_control = True
+        thermal_control = False
 
         node_indices = {node_key: idx for idx, node_key in enumerate(self.nodes.keys())}
 
@@ -865,8 +893,10 @@ class ThermalModel:
                 if i != j:
                     temperature_differences[i, j] = temperatures[j] - temperatures[i]
 
-        heat_transfer_matrix = self.k_matrix * temperature_differences * self.a_matrix
-        q_internal = np.sum(heat_transfer_matrix, axis=1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            heat_transfer_matrix = np.where(self.l_matrix != 0, self.k_matrix * temperature_differences * self.a_matrix / self.l_matrix, 0)
+
+        q_internal_conducted = np.sum(heat_transfer_matrix, axis=1)
 
         temp_diff = temperatures[:, np.newaxis] ** 4 - temperatures[np.newaxis, :] ** 4
         # Update q_internal_radiated to use the new emissivities from MLI where applicable
@@ -881,13 +911,22 @@ class ThermalModel:
         
         external_heat_flux = ExternalHeatFlux(self.nodes, h, beta, t).total_flux()
 
-        q_total = q_internal + q_generated + q_internal_radiated - q_radiated + external_heat_flux
+        q_external = np.where(is_radiating, external_heat_flux, 0)
 
+        q_total = q_internal_conducted + q_generated + q_internal_radiated - q_radiated + q_external
+
+        #print(np.max(q_internal_conducted), np.max(q_generated), np.max(q_internal_radiated), np.max(q_radiated), np.max(q_external))
+        #print(np.min(q_internal_conducted), np.min(q_generated), np.min(q_internal_radiated), np.min(q_radiated), np.min(q_external))
+
+        #print(f'{self.nodes[1].name} : {q_total[0]}, {self.nodes[2].name} : {q_total[1]}, {self.nodes[3].name} : {q_total[2]}, {self.nodes[4].name} : {q_total[3]}, {self.nodes[9].name} : {q_total[8]}')
+
+        # print(np.max(q_total), np.min(q_total))
         if thermal_control:
             dT_dt = np.where(heat_flux_ints == 0, q_total / thermal_masses, 0)
+            # print(f'Thermal control {dT_dt}')
         else:
             dT_dt = q_total / thermal_masses
-
+            # print(dT_dt)
         return dT_dt
 
     @staticmethod
